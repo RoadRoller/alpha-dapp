@@ -1,5 +1,6 @@
 import { Button, Icon, Table, Upload, Input } from 'antd';
 import React from 'react';
+import { JsonRpcClient } from "../../jsonrpc";
 
 class CellCounterService extends React.Component {
 
@@ -24,7 +25,7 @@ class CellCounterService extends React.Component {
   }
 
   isComplete() {
-    return this.props.jobResult !== undefined;
+    return this.state.resultValues !== undefined;
   }
 
   processFile(file) {
@@ -50,22 +51,37 @@ class CellCounterService extends React.Component {
   }
 
   submitAction() {
-    this.props.showModalCallback(this.props.callModal);
-    this.props.callApiCallback(this.state.methodName, {
+    this.callApi(this.state.methodName, {
       image: this.state.fileReader.result.split(',')[1],
       red_intensity_lower: this.state.redIntensityLower,
     });
   }
 
-  componentWillReceiveProps(nextProps) {
-    this.parseResult(nextProps);
+  callApi(methodName, params) {
+    this.setState({
+      working: true,
+    });
+    let rpcClient = new JsonRpcClient({ endpoint: "/api" });
+
+    rpcClient.request(methodName, params).then(rpcResponse => {
+      this.setState({
+        working: false,
+      });
+      console.log(rpcResponse);
+      this.parseResult(rpcResponse);
+    }).catch((rpcError) => {
+      this.setState({
+        working: false,
+      });
+      console.log(rpcError);
+      alert(rpcError.message);
+    });
   }
 
-  parseResult(nextProps) {
-    if (nextProps.jobResult === undefined)
+  parseResult(rpcResponse) {
+    if (rpcResponse === undefined) {
       return;
-
-    let rpcResponse = nextProps.jobResult;
+    }
 
     let resultColums = Object.keys(rpcResponse).map(item => {
       return {
@@ -88,6 +104,16 @@ class CellCounterService extends React.Component {
     }));
   }
 
+  resetState() {
+    this.setState({
+      fileUploaded: false,
+      file: undefined,
+      fileReader: undefined,
+      resultColums: undefined,
+      resultValues: undefined,
+    });
+  }
+
   updateValid() {
     const redIntensityLower = Number.parseInt(this.state.redIntensityLower);
     const inputValid = redIntensityLower >= 0 && redIntensityLower <= 255;
@@ -104,7 +130,7 @@ class CellCounterService extends React.Component {
   }
 
   renderForm() {
-    const { fileUploaded, file, redIntensityLower, inputValid } = this.state;
+    const { fileUploaded, file, redIntensityLower, inputValid, working } = this.state;
 
     return (
       <React.Fragment>
@@ -148,7 +174,9 @@ class CellCounterService extends React.Component {
           <br />
           <br />
           <br />
-          <Button type="primary" onClick={() => { this.submitAction(); }} disabled={!fileUploaded || !inputValid} >Call Agent API</Button>
+          <Button type="primary" onClick={() => { this.submitAction(); }} disabled={!fileUploaded || !inputValid || working} >
+            {working ? "Working..." : "Count cells"}
+          </Button>
         </div>
       </React.Fragment>
     )
@@ -167,6 +195,10 @@ class CellCounterService extends React.Component {
           </div>
         }
         <Table pagination={false} columns={this.state.resultColums} dataSource={this.state.resultValues} />
+        <br />
+        <br />
+        <br />
+        <Button type="primary" onClick={() => { this.resetState(); }}>New cells count</Button>
       </div>
     );
   }
@@ -174,9 +206,7 @@ class CellCounterService extends React.Component {
   renderDescription() {
     return (
       <div>
-        <p>
-          A service that takes an image and count red cells ot it.
-            </p>
+        <p>A service that takes an image and count red cells ot it.</p>
       </div>
     )
   }
